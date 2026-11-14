@@ -1,0 +1,46 @@
+name: ⚡ Keep Alive
+
+on:
+  schedule:
+    # Runs every 6 hours (00:37, 06:37, 12:37, 18:37 UTC) — organic, not top-of-hour
+    - cron: "37 */6 * * *"
+  workflow_dispatch: # manual trigger bhi
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update heartbeat file
+        run: |
+          mkdir -p .github
+          echo "$(date -u '+%Y-%m-%d %H:%M:%S UTC')" > .github/heartbeat.txt
+
+      - name: Commit & Push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/heartbeat.txt
+          git diff --staged --quiet || git commit -m "chore: heartbeat $(date -u '+%Y-%m-%d')"
+          git push
+
+      - name: Auto-Trigger Sync Clusters
+        env:
+          GH_TOKEN: ${{ secrets.MOTHER_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "⚡ Triggering sync-clusters.yml dispatch..."
+          curl -s -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${REPO}/actions/workflows/sync-clusters.yml/dispatches \
+            -d '{"ref":"main"}' || true
+          echo "✅ Trigger request sent!"
